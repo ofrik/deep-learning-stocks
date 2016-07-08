@@ -11,3 +11,7 @@ Each record contains:
 - Volume  
 - Adjacent close price  
 - Date  
+
+The main challenges of this project is to actually find some interesting features, that will give accurate prediction.  
+This project is interesting because as everybody knows deep learning solved tasks that considered difficult in the part even with pretty basic deep learning features.  
+and if we find something it can be used to make a lot of money.
