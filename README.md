@@ -11,7 +11,7 @@ Each record contains:
 - Low price: The min price the stock reached within the month.
 - Volume: The max price the stock reached within the month.
 - [Adjacent close price](https://marubozu.blogspot.co.il/2006/09/how-yahoo-calculates-adjusted-closing.html).  
-- Date: Month and Year.
+- Date: Day, Month and Year.
 
 The main challenges of this project are: 
 - The limited data within a market that is changed by wide variety of things. In particular, things that we don't see in the raw data, like special accouncments on new technology.
@@ -704,8 +704,8 @@ Our evaluation used two different configurations:
 In both cases we used the predictions of the algorithm to create a sequence to tell us whether the stock is going to get up or down. Then we checked it with the actual data and calculated accuracy.
 
 ### Results:
-The accuracy as stated above is better then a naive algorithm, Not by far, But still better which means that if we follow the algorithm we are actually expected to profit.
+The accuracy as stated above is better then a naive algorithm, Not by far, But still better which means that if we follow the algorithm we are actually expected to make profit.
 
 ### What next?
 As expected it seems like the raw stock data isn't get a high estimation of the stock behavior.
-We could try mixing it with information from financial articles and news. And even checking for a country specific economics laws.
+We could try mixing it with information from financial articles and news,  try to take into account related stocks like the sector, S&P500 and  new features,  even checking for a country specific economics laws.
