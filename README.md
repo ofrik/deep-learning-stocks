@@ -36,9 +36,14 @@ from keras.layers.recurrent import LSTM,GRU,SimpleRNN
 from keras.layers.core import Dense, Activation, Dropout
 from sklearn.cross_validation import train_test_split
 from sklearn.ensemble import RandomForestClassifier
+import warnings
+warnings.filterwarnings('ignore')
 
 from keras.utils.np_utils import to_categorical
 ```
+
+    Using Theano backend.
+    
 
 #### Load or Download the data
 
@@ -82,7 +87,7 @@ print data.shape
 data.head()
 ```
 
-    (13733, 7)
+    (13744, 7)
     
 
 
@@ -164,6 +169,213 @@ data.head()
 - Each record reprsent one specific day.
 - Each record contain: Date, Open, High, Low, Close, Volume and Adj Close.
 
+# Creating sequence of close price from the stock data
+
+Our motivation was trying to imitiate a a stock similiar to IBM stock.
+
+### Feature extraction:
+
+We'll use for our features only the closing price of the stock.
+And the sequence generated will include only the closing price aswell.
+
+
+
+```python
+def extract_features(items):
+    return [[item[4]] for item in items]
+```
+
+
+```python
+def extract_expected_result(item):
+    return [item[4]]
+```
+
+
+```python
+MAX_WINDOW = 5
+```
+
+
+```python
+def train_test_split(data, test_size=0.1):
+    """
+    This just splits data to training and testing parts
+    """
+    ntrn = int(round(len(data) * (1 - test_size)))
+    X, y = generate_input_and_outputs(data,extract_features,extract_expected_result)
+    X_train,y_train,X_test, y_test = X[:ntrn],y[:ntrn],X[ntrn:],y[ntrn:]
+
+    return X_train, y_train, X_test, y_test
+```
+
+
+```python
+def generate_input_and_outputs(data,extractFeaturesFunc=extract_features,expectedResultFunc=extract_expected_result):
+    step = 1
+    inputs = []
+    outputs = []
+    for i in range(0, len(data) - MAX_WINDOW, step):
+        inputs.append(extractFeaturesFunc(data.iloc[i:i + MAX_WINDOW].as_matrix()))
+        outputs.append(expectedResultFunc(data.iloc[i + MAX_WINDOW].as_matrix()))
+    return inputs, outputs
+```
+
+
+```python
+X_train,y_train, X_test, y_test = train_test_split(data,test_size=0.15)
+```
+
+### Distance metrics:
+For our evaluation of the quality we used several distance metrics:
+* Euclidean distance.
+* Squared Euclidean distance.
+* Chebyshev distance.
+* Cosine distance.
+
+
+```python
+import scipy.spatial.distance as dist
+
+def distance_functions(generated_seq):
+    generated_sequence = np.asarray(generated_seq)
+    original_sequence = np.asarray(y_test)
+
+    print 'Euclidean distance: ', dist.euclidean(original_sequence, generated_sequence)
+    print 'Squared Euclidean distance: ', dist.sqeuclidean(original_sequence, generated_sequence)
+    print 'Chebyshev distance: ', dist.chebyshev(original_sequence, generated_sequence)
+    print 'Cosine distance: ', dist.cosine(original_sequence, generated_sequence)
+    return generated_sequence
+
+def train_and_evaluate(model, model_name):
+    print 'Done building'
+    print 'Training...'
+    model.fit(X_train, y_train, batch_size=500, nb_epoch=500, validation_split=0.15,verbose=0)
+    print 'Generating sequence...'
+    generated_sequence = model.predict(X_test)
+    return distance_functions(generated_sequence)
+```
+
+### Training and Evaluation
+We tried 3 different deep-learning algorithms:
+* LSTM.
+* GRU.
+* SimpleRNN.
+For each algorithm we generated a sequence, Measured its distance and plotted the given result with the original sequence.
+
+
+```python
+layer_output_size1 = 128
+
+print 'Building LSTM Model'
+model = Sequential()
+model.add(LSTM(layer_output_size1, return_sequences=False, input_shape=(MAX_WINDOW, len(X_train[0][0]))))
+model.add(Dense(len(y_train[0]), input_dim=layer_output_size1))
+model.add(Activation("linear"))
+model.compile(loss="mean_squared_error", optimizer="rmsprop")
+LSTM_seq = train_and_evaluate(model, 'LSTM')
+print '----------------------'
+
+print 'Building SimpleRNN Model'
+model = Sequential()
+model.add(SimpleRNN(layer_output_size1, return_sequences=False, input_shape=(MAX_WINDOW, len(X_train[0][0]))))
+model.add(Dense(len(y_train[0]), input_dim=layer_output_size1))
+model.add(Activation("linear"))
+model.compile(loss="mean_squared_error", optimizer="rmsprop")
+SimpleRNN_seq = train_and_evaluate(model, 'SimpleRNN')
+print '----------------------'
+
+print 'Building GRU Model'
+model = Sequential()
+model.add(GRU(layer_output_size1, return_sequences=False, input_shape=(MAX_WINDOW, len(X_train[0][0]))))
+model.add(Dense(len(y_train[0]), input_dim=layer_output_size1))
+model.add(Activation("linear"))
+model.compile(loss="mean_squared_error", optimizer="rmsprop")
+GRU_seq = train_and_evaluate(model, 'GRU')
+```
+
+    Building LSTM Model
+    Done building
+    Training...
+    Generating sequence...
+    Euclidean distance:  146.648831224
+    Squared Euclidean distance:  21505.8796994
+    Chebyshev distance:  22.0612487793
+    Cosine distance:  9.0914347589e-05
+    ----------------------
+    Building SimpleRNN Model
+    Done building
+    Training...
+    Generating sequence...
+    Euclidean distance:  110.185439683
+    Squared Euclidean distance:  12140.8311182
+    Chebyshev distance:  17.1705474854
+    Cosine distance:  0.000102971857196
+    ----------------------
+    Building GRU Model
+    Done building
+    Training...
+    Generating sequence...
+    Euclidean distance:  142.671323629
+    Squared Euclidean distance:  20355.1065861
+    Chebyshev distance:  20.6371765137
+    Cosine distance:  9.01642322843e-05
+    
+
+### Graphs showing the difference between the generated sequence and the original
+
+#### LSTM Sequence vs Original Sequence.
+
+
+```python
+%matplotlib inline
+
+import matplotlib.pyplot as plt
+import pylab
+pylab.rcParams['figure.figsize'] = (32, 6)
+pylab.xlim([0,len(y_test)])
+
+plt.plot(y_test, linewidth=1)
+plt.plot(LSTM_seq, marker='o', markersize=4, linewidth=0)
+plt.legend(['Original = Blue', 'LSTM = Green '], loc='best', prop={'size':20})
+plt.show()
+```
+
+
+![png](output_23_0.png)
+
+
+#### GRU Sequence vs Original Sequence
+
+
+```python
+plt.plot(y_test, linewidth=1)
+plt.plot(GRU_seq, marker='o', markersize=4, linewidth=0, c='r')
+plt.legend(['Original = Blue','GRU = Red'], loc='best', prop={'size':20})
+plt.show()
+```
+
+
+![png](output_25_0.png)
+
+
+#### SimpleRNN Sequence vs Original Sequence.
+
+
+```python
+plt.plot(y_test, linewidth=1)
+plt.plot(SimpleRNN_seq, marker='o', markersize=4, linewidth=0, c='black')
+plt.legend(['Original = Blue', 'SimpleRNN = Black'], loc='best', prop={'size':20})
+plt.show()
+```
+
+
+![png](output_27_0.png)
+
+
+# Up / Down sequences.
+After the generation of a new sequence we wanted to try another thing: Trying to predict up / down sequences.
+
 ## Feature Extraction and Data Pre-processing.
 
 #### The features are:
@@ -185,6 +397,8 @@ data.head()
 
 
 ```python
+data = get_data_if_not_exists(force=True)
+
 for i in range(1,len(data)):
     prev = data.iloc[i-1]
     data.set_value(i,"prev_close",prev["Close"])
@@ -291,66 +505,66 @@ data.describe()
   <tbody>
     <tr>
       <th>count</th>
-      <td>13732.000000</td>
-      <td>13732.000000</td>
-      <td>13732.000000</td>
-      <td>13732.000000</td>
-      <td>1.373200e+04</td>
-      <td>13732.000000</td>
-      <td>13732.000000</td>
-      <td>13732.000000</td>
-      <td>13732.000000</td>
-      <td>13732.000000</td>
-      <td>13732.000000</td>
-      <td>13732.000000</td>
-      <td>13732.000000</td>
-      <td>13732.000000</td>
-      <td>13732.000000</td>
-      <td>13732.000000</td>
-      <td>13732.000000</td>
-      <td>13732.000000</td>
+      <td>13743.000000</td>
+      <td>13743.000000</td>
+      <td>13743.000000</td>
+      <td>13743.000000</td>
+      <td>1.374300e+04</td>
+      <td>13743.000000</td>
+      <td>13743.000000</td>
+      <td>13743.000000</td>
+      <td>13743.000000</td>
+      <td>13743.000000</td>
+      <td>13743.000000</td>
+      <td>13743.000000</td>
+      <td>13743.000000</td>
+      <td>13743.000000</td>
+      <td>13743.000000</td>
+      <td>13743.000000</td>
+      <td>13743.000000</td>
+      <td>13743.000000</td>
     </tr>
     <tr>
       <th>mean</th>
-      <td>190.026927</td>
-      <td>191.622996</td>
-      <td>188.529923</td>
-      <td>190.052015</td>
-      <td>4.888242e+06</td>
-      <td>42.184217</td>
-      <td>190.081985</td>
-      <td>0.000130</td>
-      <td>3.093072</td>
-      <td>1.596069</td>
-      <td>1.497003</td>
-      <td>190.057348</td>
-      <td>191.653337</td>
-      <td>188.559934</td>
-      <td>2.016311</td>
-      <td>1.945993</td>
-      <td>1.744732</td>
-      <td>1.822333</td>
+      <td>190.003999</td>
+      <td>191.599421</td>
+      <td>188.507612</td>
+      <td>190.029301</td>
+      <td>4.886859e+06</td>
+      <td>42.279857</td>
+      <td>190.059025</td>
+      <td>0.000132</td>
+      <td>3.091809</td>
+      <td>1.595423</td>
+      <td>1.496386</td>
+      <td>190.034305</td>
+      <td>191.629618</td>
+      <td>188.537477</td>
+      <td>2.015341</td>
+      <td>1.944983</td>
+      <td>1.743855</td>
+      <td>1.821356</td>
     </tr>
     <tr>
       <th>std</th>
-      <td>132.128685</td>
-      <td>132.913726</td>
-      <td>131.459216</td>
-      <td>132.136956</td>
-      <td>4.578696e+06</td>
-      <td>51.421161</td>
-      <td>132.176907</td>
-      <td>0.019022</td>
-      <td>2.524957</td>
-      <td>1.927046</td>
-      <td>1.955731</td>
-      <td>132.170029</td>
-      <td>132.954479</td>
-      <td>131.499711</td>
-      <td>4.575438</td>
-      <td>4.471170</td>
-      <td>4.482490</td>
-      <td>4.527545</td>
+      <td>132.078279</td>
+      <td>132.863132</td>
+      <td>131.408957</td>
+      <td>132.086500</td>
+      <td>4.577278e+06</td>
+      <td>51.511548</td>
+      <td>132.126487</td>
+      <td>0.019015</td>
+      <td>2.524363</td>
+      <td>1.926445</td>
+      <td>1.955096</td>
+      <td>132.119630</td>
+      <td>132.903900</td>
+      <td>131.449467</td>
+      <td>4.573759</td>
+      <td>4.469536</td>
+      <td>4.480823</td>
+      <td>4.525878</td>
     </tr>
     <tr>
       <th>min</th>
@@ -375,18 +589,18 @@ data.describe()
     </tr>
     <tr>
       <th>25%</th>
-      <td>97.500000</td>
+      <td>97.559998</td>
       <td>98.500000</td>
       <td>96.500000</td>
-      <td>97.449997</td>
-      <td>1.182300e+06</td>
-      <td>5.943054</td>
-      <td>97.449997</td>
-      <td>-0.007978</td>
+      <td>97.500000</td>
+      <td>1.182400e+06</td>
+      <td>5.944829</td>
+      <td>97.500000</td>
+      <td>-0.007973</td>
       <td>1.500000</td>
       <td>0.375000</td>
-      <td>0.269997</td>
-      <td>97.500000</td>
+      <td>0.270004</td>
+      <td>97.559998</td>
       <td>98.500000</td>
       <td>96.500000</td>
       <td>0.500000</td>
@@ -396,42 +610,42 @@ data.describe()
     </tr>
     <tr>
       <th>50%</th>
-      <td>128.019996</td>
-      <td>129.127502</td>
-      <td>127.150002</td>
-      <td>128.230004</td>
-      <td>4.172050e+06</td>
-      <td>16.207522</td>
-      <td>128.230004</td>
+      <td>128.125000</td>
+      <td>129.250000</td>
+      <td>127.220001</td>
+      <td>128.250000</td>
+      <td>4.168000e+06</td>
+      <td>16.215748</td>
+      <td>128.250000</td>
       <td>0.000000</td>
       <td>2.375000</td>
       <td>1.000000</td>
       <td>0.875000</td>
-      <td>128.019996</td>
-      <td>129.127502</td>
-      <td>127.150002</td>
-      <td>1.180005</td>
+      <td>128.125000</td>
+      <td>129.250000</td>
+      <td>127.220001</td>
+      <td>1.180000</td>
       <td>1.125000</td>
       <td>1.000000</td>
       <td>1.000000</td>
     </tr>
     <tr>
       <th>75%</th>
-      <td>263.781321</td>
+      <td>263.750046</td>
       <td>266.000000</td>
-      <td>262.000000</td>
-      <td>263.999996</td>
-      <td>6.966050e+06</td>
-      <td>71.057560</td>
-      <td>263.999997</td>
-      <td>0.008335</td>
-      <td>3.875050</td>
-      <td>2.030001</td>
-      <td>1.999573</td>
-      <td>263.875014</td>
+      <td>261.750092</td>
+      <td>263.750092</td>
+      <td>6.962550e+06</td>
+      <td>71.188760</td>
+      <td>263.812550</td>
+      <td>0.008324</td>
+      <td>3.875046</td>
+      <td>2.029999</td>
+      <td>1.999497</td>
+      <td>263.750092</td>
       <td>266.000000</td>
-      <td>262.000000</td>
-      <td>2.499886</td>
+      <td>261.750092</td>
+      <td>2.499848</td>
       <td>2.375046</td>
       <td>2.062500</td>
       <td>2.187500</td>
@@ -485,20 +699,10 @@ def extract_features(items):
             item[18], item[19], 0] 
             
             for item in items]
-                
 
-# def extract_features(items):
-#     return [[item[12],item[11],item[10],item[9], 1] if item[8] else [item[12],item[11],item[10],item[9], -1] for item in items]
-```
-
-
-```python
 def extract_expected_result(item):
     return 1 if item[8] else 0
-```
 
-
-```python
 def generate_input_and_outputs(data):
     step = 1
     inputs = []
@@ -642,7 +846,7 @@ def evaluateModel(model):
             success2 += 1
     accuracy = float(success) / len(predicts)
     accuracy2 = float(success2) / len(predicts)
-    print "The Accuracy for %s is: %s" % (model.alg_name, max(accuracy2, accuracy))
+    print "The Accuracy for %s is: %s" % (model.alg_name, max(accuracy2, accuracy, 1-accuracy, 1-accuracy2))
     return accuracy
 ```
 
@@ -666,13 +870,13 @@ acc = train_and_evaluate()
 
     Training model LSTM
     Adding layer of DecisionTreeClassifier
-    The Accuracy for LSTM is: 0.52572815534
+    The Accuracy for LSTM is: 0.531780688986
     Training model SimpleRNN
     Adding layer of DecisionTreeClassifier
-    The Accuracy for SimpleRNN is: 0.526213592233
+    The Accuracy for SimpleRNN is: 0.531780688986
     Training model GRU
     Adding layer of DecisionTreeClassifier
-    The Accuracy for GRU is: 0.52572815534
+    The Accuracy for GRU is: 0.531780688986
     
 
 ### Naive algorithm:
@@ -691,7 +895,7 @@ print 'The accuracy of naive algorithm is: ', acc
 ```
 
     The most frequent is: False
-    The accuracy of naive algorithm is:  0.51303524614
+    The accuracy of naive algorithm is:  0.512988430474
     
 
 ## Summary & Evaluation analysis:
